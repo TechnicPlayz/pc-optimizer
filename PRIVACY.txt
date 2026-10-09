@@ -1,0 +1,9 @@
+VELORA PC - PRIVACY NOTICE (TEMPLATE)
+
+*** Template: review before commercial distribution. ***
+
+- Velora PC collects no telemetry and no personal data.
+- Nothing about your PC is uploaded.
+- Settings, history and logs are stored only on your PC in %LocalAppData%\VeloraPC.
+- The only network request is the optional update check, which asks GitHub for the latest release number. You can turn it off in Settings > Updates.
+- Uninstalling removes the app, its scheduled task, its startup entry and its local data.
