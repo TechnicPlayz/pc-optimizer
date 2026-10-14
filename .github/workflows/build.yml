@@ -80,11 +80,12 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
+
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup installation failed."
           }
 
-        name: Build installer
+      - name: Build installer
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -104,7 +105,18 @@ jobs:
           $installers = @(Get-ChildItem dist -Filter "*.exe" -File)
 
           if ($installers.Count -eq 0) {
-            throw "Installer build completed without producing an EXE in dist/."
+            throw "Installer EXE was not created in dist/."
+          }
+
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          if (!(Test-Path "publish/VeloraPC.exe")) {
+            throw "Portable EXE is missing."
+          }
+
+          if (@(Get-ChildItem dist -Filter "*.exe" -File).Count -eq 0) {
+            throw "Installer EXE is missing."
           }
 
       - name: Upload build artifacts
