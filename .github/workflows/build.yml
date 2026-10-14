@@ -1,4 +1,4 @@
-      - name: Verify build outputs
+      name: Verify build outputs
         shell: pwsh
         run: |
           if (!(Test-Path "publish/VeloraPC.exe")) {
