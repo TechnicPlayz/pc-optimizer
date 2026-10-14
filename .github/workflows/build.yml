@@ -1,15 +1,53 @@
-      name: Verify build outputs
+name: Build Velora PC
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify project exists
         shell: pwsh
         run: |
-          if (!(Test-Path "publish/VeloraPC.exe")) {
-            throw "Missing publish/VeloraPC.exe"
+          if (!(Test-Path 'src/VeloraPC/VeloraPC.csproj')) {
+            throw 'Project file not found: src/VeloraPC/VeloraPC.csproj'
           }
 
-          if (!(Get-ChildItem "dist" -Filter "*.exe" -ErrorAction SilentlyContinue)) {
-            throw "No installer EXE found in dist/"
-          }
+      - name: Publish Windows EXE
+        shell: pwsh
+        run: |
+          dotnet publish src/VeloraPC/VeloraPC.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - uses: actions/upload-artifact@v4
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/VeloraPC.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload EXE and installer
+        uses: actions/upload-artifact@v4
         with:
           name: VeloraPC
           path: |
