@@ -1,3 +1,4 @@
+
 name: Build Velora PC
 
 on:
@@ -6,7 +7,7 @@ on:
       - main
       - master
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -20,37 +21,106 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
-      - name: Verify project exists
+      - name: Determine version
         shell: pwsh
         run: |
-          if (!(Test-Path 'src/VeloraPC/VeloraPC.csproj')) {
-            throw 'Project file not found: src/VeloraPC/VeloraPC.csproj'
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $version = "0.0.$env:GITHUB_RUN_NUMBER"
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid version: $version. Use tags such as v1.2.3."
+          }
+
+          "APP_VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Building Velora PC version $version"
+
+      - name: Verify required files
+        shell: pwsh
+        run: |
+          $required = @(
+            "src/VeloraPC/VeloraPC.csproj",
+            "installer/VeloraPC.iss"
+          )
+
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) {
+              throw "Required file not found: $file"
+            }
           }
 
       - name: Publish Windows EXE
         shell: pwsh
         run: |
-          dotnet publish src/VeloraPC/VeloraPC.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish src/VeloraPC/VeloraPC.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            "-p:Version=$env:APP_VERSION" `
+            --output publish
 
-      - name: Build installer
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed with exit code $LASTEXITCODE"
+          }
+
+          if (!(Test-Path "publish/VeloraPC.exe")) {
+            throw "Expected publish/VeloraPC.exe was not created."
+          }
+
+      - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/VeloraPC.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup installation failed."
+          }
 
-      - name: Upload EXE and installer
+        name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (!(Test-Path $compiler)) {
+            throw "Inno Setup compiler not found: $compiler"
+          }
+
+          & $compiler "/DAppVersion=$env:APP_VERSION" "installer/VeloraPC.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installer compilation failed."
+          }
+
+          $installers = @(Get-ChildItem dist -Filter "*.exe" -File)
+
+          if ($installers.Count -eq 0) {
+            throw "Installer build completed without producing an EXE in dist/."
+          }
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VeloraPC
+          name: VeloraPC-Windows
           path: |
             publish/VeloraPC.exe
             dist/*.exe
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            publish/VeloraPC.exe
+            dist/*.exe
