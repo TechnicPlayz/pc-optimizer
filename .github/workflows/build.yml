@@ -29,20 +29,22 @@ jobs:
       - name: Determine version
         shell: pwsh
         run: |
-          if ($env:GITHUB_REF -like "refs/tags/v*") {
+          if ($env:GITHUB_REF -match '^refs/tags/v') {
             $version = $env:GITHUB_REF_NAME.Substring(1)
           } else {
             $version = "0.0.$env:GITHUB_RUN_NUMBER"
           }
 
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Invalid version: $version. Use tags such as v1.2.3."
+            throw "Invalid version: $version. Use a tag such as v1.2.3."
           }
 
-          "APP_VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Building Velora PC version $version"
+          "APP_VERSION=$version" |
+            Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Verify required files
+          Write-Host "Building version $version"
+
+      - name: Verify project files
         shell: pwsh
         run: |
           $required = @(
@@ -52,28 +54,57 @@ jobs:
 
           foreach ($file in $required) {
             if (!(Test-Path $file)) {
-              throw "Required file not found: $file"
+              throw "Required file missing: $file"
             }
           }
 
-      - name: Publish Windows EXE
+      - name: Restore dependencies
         shell: pwsh
         run: |
+          dotnet restore src/VeloraPC/VeloraPC.csproj
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "NuGet restore failed."
+          }
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          dotnet build src/VeloraPC/VeloraPC.csproj `
+            --configuration Release `
+            --no-restore `
+            -p:Version=$env:APP_VERSION
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release build failed."
+          }
+
+      - name: Publish Windows x64 EXE
+        shell: pwsh
+        run: |
+          if (Test-Path publish) {
+            Remove-Item publish -Recurse -Force
+          }
+
           dotnet publish src/VeloraPC/VeloraPC.csproj `
             --configuration Release `
             --runtime win-x64 `
             --self-contained true `
+            --no-restore `
+            -p:Version=$env:APP_VERSION `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            "-p:Version=$env:APP_VERSION" `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
             --output publish
 
           if ($LASTEXITCODE -ne 0) {
-            throw "dotnet publish failed with exit code $LASTEXITCODE"
+            throw "Release publish failed."
           }
 
           if (!(Test-Path "publish/VeloraPC.exe")) {
-            throw "Expected publish/VeloraPC.exe was not created."
+            Get-ChildItem publish -Recurse | Select-Object FullName
+            throw "publish/VeloraPC.exe was not created. Check AssemblyName in the project file."
           }
 
       - name: Install Inno Setup
@@ -88,7 +119,8 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          New-Item -ItemType Directory -Force -Path dist |
+            Out-Null
 
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 
@@ -96,26 +128,44 @@ jobs:
             throw "Inno Setup compiler not found: $compiler"
           }
 
-          & $compiler "/DAppVersion=$env:APP_VERSION" "installer/VeloraPC.iss"
+          & $compiler `
+            "/DAppVersion=$env:APP_VERSION" `
+            "/Odist" `
+            "/FVeloraPC-Setup-$env:APP_VERSION" `
+            "installer/VeloraPC.iss"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Installer compilation failed."
+            throw "Inno Setup compilation failed."
           }
 
-          $installers = @(Get-ChildItem dist -Filter "*.exe" -File)
+          $installers = @(
+            Get-ChildItem dist -Filter "*.exe" -File
+          )
 
           if ($installers.Count -eq 0) {
-            throw "Installer EXE was not created in dist/."
+            throw "No installer was created in dist/."
           }
+
+          $installers | Select-Object FullName, Length
 
       - name: Verify release files
         shell: pwsh
         run: |
-          if (!(Test-Path "publish/VeloraPC.exe")) {
-            throw "Portable EXE is missing."
+          $files = @(
+            "publish/VeloraPC.exe"
+          )
+
+          foreach ($file in $files) {
+            if (!(Test-Path $file)) {
+              throw "Required release file missing: $file"
+            }
           }
 
-          if (@(Get-ChildItem dist -Filter "*.exe" -File).Count -eq 0) {
+          $installers = @(
+            Get-ChildItem dist -Filter "*.exe" -File
+          )
+
+          if ($installers.Count -eq 0) {
             throw "Installer EXE is missing."
           }
 
@@ -127,12 +177,16 @@ jobs:
             publish/VeloraPC.exe
             dist/*.exe
           if-no-files-found: error
+          retention-days: 14
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: Velora PC v${{ env.APP_VERSION }}
           generate_release_notes: true
           files: |
             publish/VeloraPC.exe
             dist/*.exe
+          fail_on_unmatched_files: true
