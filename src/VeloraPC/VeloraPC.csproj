@@ -1,7 +1,9 @@
+
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -17,6 +19,7 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <TieredPGO>true</TieredPGO>
   </PropertyGroup>
+
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
   </ItemGroup>
