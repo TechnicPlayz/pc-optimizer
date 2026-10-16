@@ -1,26 +1,55 @@
 
-      - name: Build installer
+      - name: Restore dependencies
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist |
-            Out-Null
-
-          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-
-          if (!(Test-Path $compiler)) {
-            throw "Inno Setup compiler not found: $compiler"
-          }
-
-          & $compiler "/DAppVersion=$env:APP_VERSION" "installer/VeloraPC.iss"
+          dotnet restore src/VeloraPC/VeloraPC.csproj `
+            --runtime win-x64 `
+            -p:SelfContained=true
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup compilation failed."
+            throw "NuGet restore failed."
           }
 
-          $installer = "dist/VeloraPC-Setup-$env:APP_VERSION.exe"
+      - name: Build Release
+        shell: pwsh
+        run: |
+          dotnet build src/VeloraPC/VeloraPC.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --no-restore `
+            -p:SelfContained=true `
+            "-p:Version=$env:APP_VERSION"
 
-          if (!(Test-Path $installer)) {
-            throw "Expected installer not found: $installer"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release build failed."
           }
 
-          Write-Host "Installer created: $installer"
+      - name: Publish Windows x64 EXE
+        shell: pwsh
+        run: |
+          if (Test-Path publish) {
+            Remove-Item publish -Recurse -Force
+          }
+
+          dotnet publish src/VeloraPC/VeloraPC.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            "-p:Version=$env:APP_VERSION" `
+            --output publish
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release publish failed."
+          }
+
+          if (!(Test-Path "publish/VeloraPC.exe")) {
+            Get-ChildItem publish -Recurse |
+              Select-Object FullName
+
+            throw "VeloraPC.exe was not created."
+          }
