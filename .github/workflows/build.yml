@@ -36,7 +36,7 @@ jobs:
           }
 
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Invalid version: $version. Use tags such as v1.2.3."
+            throw "Use a version such as v1.2.3 for release tags."
           }
 
           "APP_VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
@@ -46,8 +46,8 @@ jobs:
         run: |
           $required = @(
             "src/VeloraPC/VeloraPC.csproj",
-            "installer/VeloraPC.iss",
             "src/VeloraPC/Assets/app.ico",
+            "installer/VeloraPC.iss",
             "EULA.txt",
             "PRIVACY.txt"
           )
@@ -58,17 +58,25 @@ jobs:
             }
           }
 
-      - name: Restore Windows x64 dependencies
+      - name: Restore dependencies
         shell: pwsh
         run: |
-          dotnet restore src/VeloraPC/VeloraPC.csproj `
-            --runtime win-x64
+          dotnet restore src/VeloraPC/VeloraPC.csproj --runtime win-x64 -p:SelfContained=true
+          if ($LASTEXITCODE -ne 0) { throw "Restore failed." }
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Restore failed."
-          }
+      - name: Build Release
+        shell: pwsh
+        run: |
+          dotnet build src/VeloraPC/VeloraPC.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --no-restore `
+            -p:SelfContained=true `
+            "-p:Version=$env:APP_VERSION"
 
-      - name: Publish Windows x64 Release
+          if ($LASTEXITCODE -ne 0) { throw "Build failed." }
+
+      - name: Publish Windows x64 EXE
         shell: pwsh
         run: |
           if (Test-Path publish) {
@@ -83,45 +91,31 @@ jobs:
             --no-restore `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
             "-p:Version=$env:APP_VERSION" `
             --output publish
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Publish failed."
-          }
-
-          if (!(Test-Path "publish/VeloraPC.exe")) {
-            throw "VeloraPC.exe was not generated."
-          }
+          if ($LASTEXITCODE -ne 0) { throw "Publish failed." }
+          if (!(Test-Path "publish/VeloraPC.exe")) { throw "VeloraPC.exe was not generated." }
 
       - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup installation failed."
-          }
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed." }
 
       - name: Build installer
         shell: pwsh
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-
-          if (!(Test-Path $compiler)) {
-            throw "Inno Setup compiler not found: $compiler"
-          }
+          if (!(Test-Path $compiler)) { throw "Inno Setup compiler not found." }
 
           & $compiler "/DAppVersion=$env:APP_VERSION" "installer/VeloraPC.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Installer compilation failed."
-          }
-
-          $installer = "dist/VeloraPC-Setup-$env:APP_VERSION.exe"
-
-          if (!(Test-Path $installer)) {
-            throw "Expected installer missing: $installer"
+          if (!(Test-Path "dist/VeloraPC-Setup-$env:APP_VERSION.exe")) {
+            throw "Installer file was not generated."
           }
 
       - name: Upload build artifacts
