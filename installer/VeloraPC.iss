@@ -1,55 +1,45 @@
 
-      - name: Restore dependencies
-        shell: pwsh
-        run: |
-          dotnet restore src/VeloraPC/VeloraPC.csproj `
-            --runtime win-x64 `
-            -p:SelfContained=true
+#ifndef AppVersion
+  #define AppVersion "1.0.1"
+#endif
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "NuGet restore failed."
-          }
+[Setup]
+AppId={{B7C2A9E4-5D1F-4C8A-9E3B-2F6A1D7C0E55}
+AppName=Velora PC
+AppVersion={#AppVersion}
+AppPublisher=Velora
+AppSupportURL=https://github.com/TechnicPlayz/pc-optimizer/issues
+AppUpdatesURL=https://github.com/TechnicPlayz/pc-optimizer/releases
+DefaultDirName={autopf}\Velora PC
+DefaultGroupName=Velora PC
+DisableProgramGroupPage=yes
+OutputDir=..\dist
+OutputBaseFilename=VeloraPC-Setup-{#AppVersion}
+SetupIconFile=..\src\VeloraPC\Assets\app.ico
+UninstallDisplayIcon={app}\VeloraPC.exe
+UninstallDisplayName=Velora PC
+LicenseFile=..\EULA.txt
+InfoBeforeFile=..\PRIVACY.txt
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 
-      - name: Build Release
-        shell: pwsh
-        run: |
-          dotnet build src/VeloraPC/VeloraPC.csproj `
-            --configuration Release `
-            --runtime win-x64 `
-            --no-restore `
-            -p:SelfContained=true `
-            "-p:Version=$env:APP_VERSION"
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Release build failed."
-          }
+[Files]
+Source: "..\publish\VeloraPC.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-      - name: Publish Windows x64 EXE
-        shell: pwsh
-        run: |
-          if (Test-Path publish) {
-            Remove-Item publish -Recurse -Force
-          }
+[Icons]
+Name: "{autoprograms}\Velora PC"; Filename: "{app}\VeloraPC.exe"
+Name: "{autodesktop}\Velora PC"; Filename: "{app}\VeloraPC.exe"; Tasks: desktopicon
 
-          dotnet publish src/VeloraPC/VeloraPC.csproj `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            --no-restore `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:DebugType=None `
-            -p:DebugSymbols=false `
-            "-p:Version=$env:APP_VERSION" `
-            --output publish
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "VeloraPC"; Flags: uninsdeletevalue
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Release publish failed."
-          }
-
-          if (!(Test-Path "publish/VeloraPC.exe")) {
-            Get-ChildItem publish -Recurse |
-              Select-Object FullName
-
-            throw "VeloraPC.exe was not created."
-          }
+[Run]
+Filename: "{app}\VeloraPC.exe"; Description: "Launch Velora PC"; Flags: nowait postinstall skipifsilent
