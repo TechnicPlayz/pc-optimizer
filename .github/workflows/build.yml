@@ -1,4 +1,14 @@
 
+      - name: Restore Windows x64 dependencies
+        shell: pwsh
+        run: |
+          dotnet restore src/VeloraPC/VeloraPC.csproj `
+            --runtime win-x64
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Restore failed."
+          }
+
       - name: Publish Windows x64 Release
         shell: pwsh
         run: |
@@ -7,6 +17,7 @@
             --framework net8.0-windows `
             --runtime win-x64 `
             --self-contained true `
+            --no-restore `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             "-p:Version=$env:APP_VERSION" `
@@ -17,7 +28,5 @@
           }
 
           if (!(Test-Path "publish/VeloraPC.exe")) {
-            Get-ChildItem publish -Recurse |
-              Select-Object FullName
             throw "VeloraPC.exe was not generated."
           }
